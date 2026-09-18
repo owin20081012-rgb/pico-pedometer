@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pico 2 W BLE歩数計</title>
+    <style>
+        body { font-family: -apple-system, sans-serif; background: #0f172a; color: #f8fafc; text-align: center; margin: 0; padding: 20px; }
+        .card { background: #1e293b; border-radius: 16px; padding: 20px; max-width: 400px; margin: 0 auto; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+        h1 { font-size: 1.2rem; color: #94a3b8; margin-bottom: 20px; }
+        .steps { font-size: 3.5rem; font-weight: bold; color: #38bdf8; margin: 10px 0; }
+        .unit { font-size: 1.2rem; color: #94a3b8; }
+        .progress-bg { background: #334155; border-radius: 10px; height: 16px; overflow: hidden; margin: 20px 0 10px; }
+        .progress-bar { background: linear-gradient(90deg, #38bdf8, #4ade80); height: 100%; width: 0%; transition: width 0.3s; }
+        .info { display: flex; justify-content: space-between; color: #94a3b8; font-size: 0.9rem; margin-top: 15px; }
+        button { background: #38bdf8; color: #0f172a; border: none; padding: 12px 24px; font-size: 1rem; font-weight: bold; border-radius: 8px; cursor: pointer; margin-bottom: 20px; }
+        button:disabled { background: #64748b; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>🚶 Web Bluetooth 歩数メーター</h1>
+        <button id="connectBtn" onclick="connectBLE()">Pico 2 W に接続</button>
+        <div><span class="steps" id="steps">0</span> <span class="unit">歩</span></div>
+        <div class="progress-bg"><div class="progress-bar" id="bar"></div></div>
+        <div class="info"><span>目標: 10,000歩</span><span id="rate">0%</span></div>
+        <hr style="border: 0.5px solid #334155; margin: 20px 0;">
+        <div class="info"><span id="date">----/--/--</span><span id="time">--:--:--</span></div>
+    </div>
+
+    <script>
+        const UART_SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+        const UART_TX_UUID      = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
+        const TARGET_STEPS = 10000;
+
+        async function connectBLE() {
+            try {
+                const device = await navigator.bluetooth.requestDevice({
+                    filters: [{ name: 'Pico2W-Step' }],
+                    optionalServices: [UART_SERVICE_UUID]
+                });
+
+                const server = await device.gatt.connect();
+                const service = await server.getPrimaryService(UART_SERVICE_UUID);
+                const characteristic = await service.getCharacteristic(UART_TX_UUID);
+
+                await characteristic.startNotifications();
+                characteristic.addEventListener('characteristicvaluechanged', handleData);
+
+                document.getElementById('connectBtn').innerText = "接続完了 (通信中)";
+                document.getElementById('connectBtn').disabled = true;
+            } catch (error) {
+                alert("接続に失敗しました: " + error);
+            }
+        }
+
+        function handleData(event) {
+            const value = new TextDecoder().decode(event.target.value).trim();
+            
+            // DATA:YYYY/MM/DD,HH:MM:SS,STEPS のフォーマットを解析
+            if (value.startsWith("DATA:")) {
+                const parts = value.replace("DATA:", "").split(",");
+                if (parts.length === 3) {
+                    const date = parts[0];
+                    const time = parts[1];
+                    const steps = parseInt(parts[2]);
+
+                    document.getElementById('steps').innerText = steps.toLocaleString();
+                    document.getElementById('date').innerText = date;
+                    document.getElementById('time').innerText = time;
+
+                    const rate = Math.min(100, Math.round((steps / TARGET_STEPS) * 100));
+                    document.getElementById('bar').style.width = rate + '%';
+                    document.getElementById('rate').innerText = rate + '%';
+                }
+            }
+        }
+    </script>
+</body>
+</html>
