@@ -3,77 +3,132 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pico 2 W OLED Simulator</title>
+    <title>Pico 2 W リアルタイム万歩計 & コースナビ</title>
     <style>
-        body { background: #0f172a; color: #fff; font-family: monospace; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+        body { background: #0f172a; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
         h1 { font-size: 1.2rem; color: #94a3b8; margin-bottom: 15px; }
-        .oled-container { border: 4px solid #334155; border-radius: 12px; padding: 12px; background: #000; box-shadow: 0 0 25px rgba(56,189,248,0.2); }
-        /* 128x64 の画面をスマホで見やすいよう3倍サイズ（384x192）で描画 */
-        canvas { background: #000; image-rendering: pixelated; width: 384px; height: 192px; border-radius: 4px; }
         button { background: #38bdf8; color: #0f172a; border: none; padding: 12px 24px; font-size: 1rem; font-weight: bold; border-radius: 8px; margin-bottom: 20px; cursor: pointer; }
+        
+        .card { background: #1e293b; border-radius: 16px; padding: 20px; max-width: 400px; width: 100%; box-shadow: 0 4px 20px rgba(0,0,0,0.5); box-sizing: border-box; }
+        
+        /* くっきり・クリアな液晶ディスプレイ再現 */
+        .oled-container { background: #000; border: 3px solid #334155; border-radius: 10px; padding: 10px; display: flex; justify-content: center; box-shadow: inset 0 0 10px rgba(56,189,248,0.2); }
+        canvas { background: #000; width: 100%; height: auto; aspect-ratio: 2 / 1; }
+
+        /* コース進捗カード */
+        .course-info { margin-top: 20px; text-align: left; background: #0f172a; padding: 15px; border-radius: 10px; border: 1px solid #334155; }
+        .course-title { font-size: 0.85rem; color: #38bdf8; font-weight: bold; margin-bottom: 5px; }
+        .location-name { font-size: 1.3rem; font-weight: bold; color: #4ade80; margin: 5px 0; }
+        .distance-text { font-size: 0.9rem; color: #94a3b8; }
+        
+        .progress-bg { background: #334155; border-radius: 10px; height: 12px; overflow: hidden; margin: 12px 0 6px; }
+        .progress-bar { background: linear-gradient(90deg, #38bdf8, #4ade80); height: 100%; width: 0%; transition: width 0.3s; }
     </style>
 </head>
 <body>
 
-    <h1>🚶 Pico 2 W ディスプレイシミュレーター</h1>
+    <h1>🏃 Pico 2 W 万歩計ダッシュボード</h1>
     <button id="connectBtn" onclick="connectBLE()">Pico 2 W と接続する</button>
 
-    <div class="oled-container">
-        <canvas id="oled" width="128" height="64"></canvas>
+    <div class="card">
+        <!-- クッキリ表示される高解像度OLEDキャンバス -->
+        <div class="oled-container">
+            <canvas id="oled" width="512" height="256"></canvas>
+        </div>
+
+        <!-- マラソン・駅伝ナビゲーションエリア -->
+        <div class="course-info">
+            <div class="course-title">🎽 走破状況ナビ（歩幅70cm換算）</div>
+            <div class="location-name" id="locName">スタート前</div>
+            <div class="distance-text" id="distText">累計: 0 m / 42,195 m</div>
+            
+            <div class="progress-bg"><div class="progress-bar" id="bar"></div></div>
+            <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: #64748b;">
+                <span>フルマラソン完走まで</span>
+                <span id="percent">0%</span>
+            </div>
+        </div>
     </div>
 
     <script>
         const UART_SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
         const UART_TX_UUID      = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
 
+        // 高解像度キャンバス（倍率4倍：512x256）
         const canvas = document.getElementById('oled');
         const ctx = canvas.getContext('2d');
+        const SCALE = 4; // 高精度描画用スケール
 
-        // Pico 2 W 側と全く同じドット絵パターン（8x8）
         const man_pattern1 = [0x30, 0x30, 0x78, 0xB4, 0x30, 0x20, 0x50, 0x50];
         const man_pattern2 = [0x30, 0x30, 0x78, 0x78, 0x30, 0x40, 0x50, 0x48];
 
-        // 内部状態変数
-        let state = {
-            date: "----/--/--",
-            time: "--:--:--",
-            steps: 0,
-            charX: 0,
-            animeTick: 0
-        };
+        let state = { date: "----/--/--", time: "--:--:--", steps: 0, charX: 0, animeTick: 0 };
 
-        // 8x8のドット絵を描画する関数
+        // 走破ポイントの定義（歩幅70cm＝0.7m計算、10,000歩＝7km = 7,000m）
+        const STAGES = [
+            { dist: 0,     name: "🏁 スタート（東京都庁）" },
+            { dist: 5000,  name: "⛩ 飯田橋・市ヶ谷付近 (5km)" },
+            { dist: 7000,  name: "🎯 10,000歩達成！(7km地点)" },
+            { dist: 10000, name: "🗼 日本橋付近 (10km)" },
+            { dist: 15000, name: "🗼 東京タワー前 (15km)" },
+            { dist: 21097, name: "🏃 ハーフマラソン通過 (21.1km)" },
+            { dist: 30000, name: "🔥 30kmの壁到達！ (30km)" },
+            { dist: 42195, name: "🏆 フルマラソンゴール！（東京駅）" }
+        ];
+
+        // 高解像度でのドット絵描画
         function drawDotCharacter(ox, oy, pattern) {
             for (let row = 0; row < 8; row++) {
                 for (let col = 0; col < 8; col++) {
                     if ((0x80 >> col) & pattern[row]) {
-                        // 1ドットを 2x2 ピクセルサイズで拡大描画
-                        ctx.fillRect(ox + col * 2, oy + row * 2, 2, 2);
+                        ctx.fillRect((ox + col * 2) * SCALE, (oy + row * 2) * SCALE, 2 * SCALE, 2 * SCALE);
                     }
                 }
             }
         }
 
-        // OLED画面全体を再描画する関数
+        // 高画質OLED再描画（高解像度テキスト ＆ クッキリしたドット絵）
         function drawOLED() {
-            // 背景クリア（黒）
             ctx.fillStyle = "#000";
-            ctx.fillRect(0, 0, 128, 64);
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // 文字・ドット絵描画（白）
-            ctx.fillStyle = "#fff";
-            ctx.font = "10px monospace";
-
-            ctx.fillText(`DATE ${state.date}`, 0, 10);
-            ctx.fillText(`TIME ${state.time}`, 0, 20);
-            ctx.fillText(`HOSUU ${state.steps}歩`, 0, 30);
-            ctx.fillText(`BLE:ON`, 0, 40);
-
-            // アニメーションコマの切り替え (足交互動作)
-            const currentPattern = (Math.floor(state.animeTick / 2) % 2 === 0) ? man_pattern1 : man_pattern2;
+            // 文字描画（ベクターフォントで鮮明化）
+            ctx.fillStyle = "#38bdf8";
+            ctx.font = `bold ${10 * SCALE}px monospace`;
+            ctx.fillText(`DATE ${state.date}`, 0, 10 * SCALE);
+            ctx.fillText(`TIME ${state.time}`, 0, 20 * SCALE);
             
-            // Y座標 48 (下部) に歩く人を描画
-            drawDotCharacter(state.charX, 48, currentPattern);
+            ctx.fillStyle = "#ffffff";
+            ctx.fillText(`HOSUU ${state.steps}歩`, 0, 30 * SCALE);
+            
+            ctx.fillStyle = "#4ade80";
+            ctx.fillText(`BLE:ON`, 0, 40 * SCALE);
+
+            // キャラクターアニメーション描画
+            const pat = (Math.floor(state.animeTick / 2) % 2 === 0) ? man_pattern1 : man_pattern2;
+            ctx.fillStyle = "#ffffff";
+            drawDotCharacter(state.charX, 48, pat);
+        }
+
+        // コース状況の更新（歩幅0.7mで計算）
+        function updateCourseInfo(steps) {
+            const meters = Math.round(steps * 0.7); // 1歩 ＝ 70cm
+            
+            // 現在地判定
+            let currentLoc = STAGES[0].name;
+            for (let i = 0; i < STAGES.length; i++) {
+                if (meters >= STAGES[i].dist) {
+                    currentLoc = STAGES[i].name;
+                }
+            }
+
+            // UI要素の書き換え
+            document.getElementById('locName').innerText = currentLoc;
+            document.getElementById('distText').innerText = `累計: ${meters.toLocaleString()} m / 42,195 m`;
+            
+            const rate = Math.min(100, ((meters / 42195) * 100).toFixed(1));
+            document.getElementById('bar').style.width = rate + '%';
+            document.getElementById('percent').innerText = rate + '%';
         }
 
         async function connectBLE() {
@@ -91,20 +146,16 @@
                 characteristic.addEventListener('characteristicvaluechanged', (e) => {
                     const value = new TextDecoder().decode(e.target.value).trim();
 
-                    // データ受信時の処理
                     if (value.startsWith("DATA:")) {
                         const parts = value.replace("DATA:", "").split(",");
                         if (parts.length === 3) {
                             state.date = parts[0];
                             state.time = parts[1];
                             state.steps = parseInt(parts[2]);
+                            updateCourseInfo(state.steps);
                         }
                     } else if (value.startsWith("STEPS:")) {
-                        // 一歩歩いた時の動き（位置を右にずらし、アニメーションコマを進める）
-                        state.charX += 6;
-                        if (state.charX > 128) {
-                            state.charX = -16;
-                        }
+                        state.charX = (state.charX + 6) % 128;
                         state.animeTick++;
                     }
 
@@ -118,8 +169,8 @@
             }
         }
 
-        // 初期表示
         drawOLED();
+        updateCourseInfo(0);
     </script>
 </body>
 </html>
