@@ -5,32 +5,82 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pico 2 W リアルタイム万歩計 & コースナビ</title>
     <style>
-        body { background: #0f172a; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+            background: #0f172a; 
+            color: #f8fafc; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            padding: 20px; 
+            margin: 0; 
+        }
         h1 { font-size: 1.2rem; color: #94a3b8; margin-bottom: 15px; }
-        button { background: #38bdf8; color: #0f172a; border: none; padding: 12px 24px; font-size: 1rem; font-weight: bold; border-radius: 8px; margin-bottom: 20px; cursor: pointer; }
+        .card { 
+            background: #1e293b; 
+            border-radius: 16px; 
+            padding: 20px; 
+            max-width: 400px; 
+            width: 100%; 
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5); 
+            box-sizing: border-box; 
+        }
+        .steps { font-size: 3.5rem; font-weight: bold; color: #38bdf8; margin: 10px 0; }
+        .unit { font-size: 1.2rem; color: #94a3b8; }
         
-        .card { background: #1e293b; border-radius: 16px; padding: 20px; max-width: 400px; width: 100%; box-shadow: 0 4px 20px rgba(0,0,0,0.5); box-sizing: border-box; }
+        /* プログレスバー */
+        .progress-bg { background: #334155; border-radius: 10px; height: 14px; overflow: hidden; margin: 12px 0 6px; }
+        .progress-bar { background: linear-gradient(90deg, #38bdf8, #4ade80); height: 100%; width: 0%; transition: width 0.3s; }
         
-        /* くっきり・クリアな液晶ディスプレイ再現 */
-        .oled-container { background: #000; border: 3px solid #334155; border-radius: 10px; padding: 10px; display: flex; justify-content: center; box-shadow: inset 0 0 10px rgba(56,189,248,0.2); }
-        canvas { background: #000; width: 100%; height: auto; aspect-ratio: 2 / 1; }
+        .info { display: flex; justify-content: space-between; color: #94a3b8; font-size: 0.9rem; margin-top: 15px; }
+        
+        /* ボタン共通 */
+        button { 
+            background: #38bdf8; 
+            color: #0f172a; 
+            border: none; 
+            padding: 12px 24px; 
+            font-size: 1rem; 
+            font-weight: bold; 
+            border-radius: 8px; 
+            cursor: pointer; 
+            margin-bottom: 10px; 
+            width: 100%;
+            box-sizing: border-box;
+        }
+        button:disabled { background: #64748b; color: #cbd5e1; cursor: not-allowed; }
+        
+        .sync-btn { background: #4ade80; margin-bottom: 20px; }
 
+        /* OLED画面シミュレータ */
+        .oled-container { background: #000; border: 3px solid #334155; border-radius: 10px; padding: 10px; display: flex; justify-content: center; box-shadow: inset 0 0 10px rgba(56,189,248,0.2); margin-top: 15px; }
+        canvas { background: #000; width: 100%; height: auto; aspect-ratio: 2 / 1; }
+        
         /* コース進捗カード */
         .course-info { margin-top: 20px; text-align: left; background: #0f172a; padding: 15px; border-radius: 10px; border: 1px solid #334155; }
         .course-title { font-size: 0.85rem; color: #38bdf8; font-weight: bold; margin-bottom: 5px; }
-        .location-name { font-size: 1.3rem; font-weight: bold; color: #4ade80; margin: 5px 0; }
+        .location-name { font-size: 1.2rem; font-weight: bold; color: #4ade80; margin: 5px 0; }
         .distance-text { font-size: 0.9rem; color: #94a3b8; }
-        
-        .progress-bg { background: #334155; border-radius: 10px; height: 12px; overflow: hidden; margin: 12px 0 6px; }
-        .progress-bar { background: linear-gradient(90deg, #38bdf8, #4ade80); height: 100%; width: 0%; transition: width 0.3s; }
     </style>
 </head>
 <body>
 
     <h1>🏃 Pico 2 W 万歩計ダッシュボード</h1>
-    <button id="connectBtn" onclick="connectBLE()">Pico 2 W と接続する</button>
+    
+    <button id="connectBtn" onclick="connectBLE()">Pico 2 W に接続</button>
+    <button id="syncBtn" class="sync-btn" onclick="syncTime()" disabled>📲 スマホの現在時刻をPicoに同期</button>
 
     <div class="card">
+        <h1>🚶 Web Bluetooth 歩数メーター</h1>
+        <div><span class="steps" id="steps">0</span> <span class="unit">歩</span></div>
+        
+        <div class="progress-bg"><div class="progress-bar" id="stepBar"></div></div>
+        <div class="info"><span>目標: 10,000歩</span><span id="rate">0%</span></div>
+        
+        <hr style="border: 0.5px solid #334155; margin: 20px 0;">
+        
+        <div class="info"><span id="date">----/--/--</span><span id="time">--:--:--</span></div>
+
         <!-- クッキリ表示される高解像度OLEDキャンバス -->
         <div class="oled-container">
             <canvas id="oled" width="512" height="256"></canvas>
@@ -42,7 +92,7 @@
             <div class="location-name" id="locName">スタート前</div>
             <div class="distance-text" id="distText">累計: 0 m / 42,195 m</div>
             
-            <div class="progress-bg"><div class="progress-bar" id="bar"></div></div>
+            <div class="progress-bg"><div class="progress-bar" id="courseBar"></div></div>
             <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: #64748b;">
                 <span>フルマラソン完走まで</span>
                 <span id="percent">0%</span>
@@ -52,19 +102,25 @@
 
     <script>
         const UART_SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
-        const UART_TX_UUID      = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
+        const UART_TX_UUID      = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"; // 受信（Pico -> スマホ）
+        const UART_RX_UUID      = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"; // 送信（スマホ -> Pico）
+        
+        const TARGET_STEPS = 10000;
+        
+        let bleDevice = null;
+        let rxCharacteristic = null;
 
         // 高解像度キャンバス（倍率4倍：512x256）
         const canvas = document.getElementById('oled');
         const ctx = canvas.getContext('2d');
-        const SCALE = 4; // 高精度描画用スケール
+        const SCALE = 4;
 
         const man_pattern1 = [0x30, 0x30, 0x78, 0xB4, 0x30, 0x20, 0x50, 0x50];
         const man_pattern2 = [0x30, 0x30, 0x78, 0x78, 0x30, 0x40, 0x50, 0x48];
-
+        
         let state = { date: "----/--/--", time: "--:--:--", steps: 0, charX: 0, animeTick: 0 };
 
-        // 走破ポイントの定義（歩幅70cm＝0.7m計算、10,000歩＝7km = 7,000m）
+        // 走破ポイントの定義（歩幅70cm＝0.7m計算）
         const STAGES = [
             { dist: 0,     name: "🏁 スタート（東京都庁）" },
             { dist: 5000,  name: "⛩ 飯田橋・市ヶ谷付近 (5km)" },
@@ -87,12 +143,11 @@
             }
         }
 
-        // 高画質OLED再描画（高解像度テキスト ＆ クッキリしたドット絵）
+        // 高画質OLED再描画
         function drawOLED() {
             ctx.fillStyle = "#000";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            // 文字描画（ベクターフォントで鮮明化）
+            
             ctx.fillStyle = "#38bdf8";
             ctx.font = `bold ${10 * SCALE}px monospace`;
             ctx.fillText(`DATE ${state.date}`, 0, 10 * SCALE);
@@ -104,71 +159,116 @@
             ctx.fillStyle = "#4ade80";
             ctx.fillText(`BLE:ON`, 0, 40 * SCALE);
 
-            // キャラクターアニメーション描画
             const pat = (Math.floor(state.animeTick / 2) % 2 === 0) ? man_pattern1 : man_pattern2;
             ctx.fillStyle = "#ffffff";
             drawDotCharacter(state.charX, 48, pat);
         }
 
-        // コース状況の更新（歩幅0.7mで計算）
+        // コース状況の更新
         function updateCourseInfo(steps) {
-            const meters = Math.round(steps * 0.7); // 1歩 ＝ 70cm
-            
-            // 現在地判定
+            const meters = Math.round(steps * 0.7);
             let currentLoc = STAGES[0].name;
             for (let i = 0; i < STAGES.length; i++) {
                 if (meters >= STAGES[i].dist) {
                     currentLoc = STAGES[i].name;
                 }
             }
-
-            // UI要素の書き換え
             document.getElementById('locName').innerText = currentLoc;
             document.getElementById('distText').innerText = `累計: ${meters.toLocaleString()} m / 42,195 m`;
             
             const rate = Math.min(100, ((meters / 42195) * 100).toFixed(1));
-            document.getElementById('bar').style.width = rate + '%';
+            document.getElementById('courseBar').style.width = rate + '%';
             document.getElementById('percent').innerText = rate + '%';
         }
 
+        // BLE接続処理
         async function connectBLE() {
             try {
-                const device = await navigator.bluetooth.requestDevice({
+                bleDevice = await navigator.bluetooth.requestDevice({
                     filters: [{ name: 'Pico2W-Step' }],
                     optionalServices: [UART_SERVICE_UUID]
                 });
 
-                const server = await device.gatt.connect();
+                const server = await bleDevice.gatt.connect();
                 const service = await server.getPrimaryService(UART_SERVICE_UUID);
-                const characteristic = await service.getCharacteristic(UART_TX_UUID);
+                
+                // データ受信用 (TX)
+                const txCharacteristic = await service.getCharacteristic(UART_TX_UUID);
+                await txCharacteristic.startNotifications();
+                txCharacteristic.addEventListener('characteristicvaluechanged', handleData);
 
-                await characteristic.startNotifications();
-                characteristic.addEventListener('characteristicvaluechanged', (e) => {
-                    const value = new TextDecoder().decode(e.target.value).trim();
+                // データ送信用 (RX) の保持
+                rxCharacteristic = await service.getCharacteristic(UART_RX_UUID);
 
-                    if (value.startsWith("DATA:")) {
-                        const parts = value.replace("DATA:", "").split(",");
-                        if (parts.length === 3) {
-                            state.date = parts[0];
-                            state.time = parts[1];
-                            state.steps = parseInt(parts[2]);
-                            updateCourseInfo(state.steps);
-                        }
-                    } else if (value.startsWith("STEPS:")) {
-                        state.charX = (state.charX + 6) % 128;
-                        state.animeTick++;
-                    }
+                document.getElementById('connectBtn').innerText = "接続完了 (通信中)";
+                document.getElementById('connectBtn').disabled = true;
+                document.getElementById('syncBtn').disabled = false; // 同期ボタンを有効化
 
-                    drawOLED();
-                });
+                // 接続時に自動で時刻を同期する
+                syncTime();
 
-                document.getElementById('connectBtn').style.display = 'none';
                 drawOLED();
             } catch (error) {
                 alert("接続エラー: " + error);
             }
         }
 
+        // スマホの現在時刻をPicoへ送信する関数
+        async function syncTime() {
+            if (!rxCharacteristic) {
+                alert("Picoと接続されていません。");
+                return;
+            }
+            try {
+                const now = new Date();
+                const year = now.getFullYear();
+                const month = now.getMonth() + 1;
+                const day = now.getDate();
+                const hours = now.getHours();
+                const minutes = now.getMinutes();
+                const seconds = now.getSeconds();
+
+                // "TIME:YYYY,MM,DD,HH,MM,SS" 形式で送信
+                const timeString = `TIME:${year},${month},${day},${hours},${minutes},${seconds}\n`;
+                const encoder = new TextEncoder();
+                await rxCharacteristic.writeValue(encoder.encode(timeString));
+                
+                console.log("時刻をPicoに送信しました:", timeString);
+            } catch (error) {
+                console.error("時刻同期失敗:", error);
+            }
+        }
+
+        // Picoからのデータ受信処理
+        function handleData(event) {
+            const value = new TextDecoder().decode(event.target.value).trim();
+            
+            if (value.startsWith("DATA:")) {
+                const parts = value.replace("DATA:", "").split(",");
+                if (parts.length === 3) {
+                    state.date = parts[0];
+                    state.time = parts[1];
+                    state.steps = parseInt(parts[2]);
+                    
+                    // UI反映
+                    document.getElementById('steps').innerText = state.steps.toLocaleString();
+                    document.getElementById('date').innerText = state.date;
+                    document.getElementById('time').innerText = state.time;
+                    
+                    const rate = Math.min(100, Math.round((state.steps / TARGET_STEPS) * 100));
+                    document.getElementById('stepBar').style.width = rate + '%';
+                    document.getElementById('rate').innerText = rate + '%';
+                    
+                    updateCourseInfo(state.steps);
+                }
+            } else if (value.startsWith("STEPS:")) {
+                state.charX = (state.charX + 6) % 128;
+                state.animeTick++;
+            }
+            drawOLED();
+        }
+
+        // 初期描画
         drawOLED();
         updateCourseInfo(0);
     </script>
