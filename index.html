@@ -185,7 +185,7 @@
         async function connectBLE() {
             try {
                 bleDevice = await navigator.bluetooth.requestDevice({
-                    filters: [{ name: 'Pico2W-Step' }],
+                    filters: [{ name: 'Pico2W-Step' }], // ※ラズパイ側の名前がPico2W-V2の場合はここを合わせてください
                     optionalServices: [UART_SERVICE_UUID]
                 });
 
@@ -202,3 +202,75 @@
 
                 document.getElementById('connectBtn').innerText = "接続完了 (通信中)";
                 document.getElementById('connectBtn').disabled = true;
+                document.getElementById('syncBtn').disabled = false; // 同期ボタンを有効化
+
+                // 接続時に自動で時刻を同期する
+                syncTime();
+
+                drawOLED();
+            } catch (error) {
+                alert("接続エラー: " + error);
+            }
+        }
+
+        // スマホの現在時刻をPicoへ送信する関数（★ラズパイ側に合わせた T:YYYYMMDDHHMMSS 形式）
+        async function syncTime() {
+            if (!rxCharacteristic) {
+                alert("Picoと接続されていません。");
+                return;
+            }
+            try {
+                const now = new Date();
+                const y = now.getFullYear();
+                const m = String(now.getMonth() + 1).padStart(2, '0');
+                const d = String(now.getDate()).padStart(2, '0');
+                const hh = String(now.getHours()).padStart(2, '0');
+                const mm = String(now.getMinutes()).padStart(2, '0');
+                const ss = String(now.getSeconds()).padStart(2, '0');
+
+                // "T:YYYYMMDDHHMMSS" 形式（BLEのデータ制限をクリアする短縮版）
+                const timeString = `T:${y}${m}${d}${hh}${mm}${ss}\n`;
+                const encoder = new TextEncoder();
+                await rxCharacteristic.writeValue(encoder.encode(timeString));
+                
+                console.log("時刻をPicoに送信しました:", timeString);
+            } catch (error) {
+                console.error("時刻同期失敗:", error);
+            }
+        }
+
+        // Picoからのデータ受信処理
+        function handleData(event) {
+            const value = new TextDecoder().decode(event.target.value).trim();
+            
+            if (value.startsWith("DATA:")) {
+                const parts = value.replace("DATA:", "").split(",");
+                if (parts.length === 3) {
+                    state.date = parts[0];
+                    state.time = parts[1];
+                    state.steps = parseInt(parts[2]);
+                    
+                    // UI反映
+                    document.getElementById('steps').innerText = state.steps.toLocaleString();
+                    document.getElementById('date').innerText = state.date;
+                    document.getElementById('time').innerText = state.time;
+                    
+                    const rate = Math.min(100, Math.round((state.steps / TARGET_STEPS) * 100));
+                    document.getElementById('stepBar').style.width = rate + '%';
+                    document.getElementById('rate').innerText = rate + '%';
+                    
+                    updateCourseInfo(state.steps);
+                }
+            } else if (value.startsWith("STEPS:")) {
+                state.charX = (state.charX + 6) % 128;
+                state.animeTick++;
+            }
+            drawOLED();
+        }
+
+        // 初期描画
+        drawOLED();
+        updateCourseInfo(0);
+    </script>
+</body>
+</html>
