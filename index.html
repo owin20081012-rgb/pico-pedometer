@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Pico 2 W リアルタイム万歩計 & コースナビ</title>
     <style>
         body { 
@@ -12,105 +12,185 @@
             display: flex; 
             flex-direction: column; 
             align-items: center; 
-            padding: 20px; 
+            padding: 12px; 
             margin: 0; 
+            -webkit-user-select: none;
+            user-select: none;
         }
-        h1 { font-size: 1.2rem; color: #94a3b8; margin-bottom: 15px; }
+        h1 { font-size: 1.1rem; color: #94a3b8; margin: 5px 0 12px 0; text-align: center; } 
+        
         .card { 
             background: #1e293b; 
             border-radius: 16px; 
-            padding: 20px; 
+            padding: 16px; 
             max-width: 400px; 
             width: 100%; 
             box-shadow: 0 4px 20px rgba(0,0,0,0.5); 
             box-sizing: border-box; 
+            margin-bottom: 15px;
         }
-        .steps { font-size: 3.5rem; font-weight: bold; color: #38bdf8; margin: 10px 0; }
-        .unit { font-size: 1.2rem; color: #94a3b8; }
-        
-        /* プログレスバー */
-        .progress-bg { background: #334155; border-radius: 10px; height: 14px; overflow: hidden; margin: 12px 0 6px; }
-        .progress-bar { background: linear-gradient(90deg, #38bdf8, #4ade80); height: 100%; width: 0%; transition: width 0.3s; }
-        
-        .info { display: flex; justify-content: space-between; color: #94a3b8; font-size: 0.9rem; margin-top: 15px; }
-        
-        /* ボタン共通 */
+
+        /* スマホ向け2列ボタン */
+        .btn-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            width: 100%;
+            max-width: 400px;
+            margin-bottom: 12px;
+        }
         button { 
             background: #38bdf8; 
             color: #0f172a; 
             border: none; 
-            padding: 12px 24px; 
-            font-size: 1rem; 
+            padding: 12px 8px; 
+            font-size: 0.85rem; 
             font-weight: bold; 
-            border-radius: 8px; 
+            border-radius: 10px; 
             cursor: pointer; 
-            margin-bottom: 10px; 
             width: 100%;
             box-sizing: border-box;
+            transition: opacity 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
         }
-        button:disabled { background: #64748b; color: #cbd5e1; cursor: not-allowed; }
-        
-        .sync-btn { background: #4ade80; margin-bottom: 20px; }
+        button:disabled { background: #475569; color: #94a3b8; cursor: not-allowed; }
+        .sync-btn { background: #4ade80; }
 
+        .steps { font-size: 3.2rem; font-weight: bold; color: #38bdf8; margin: 0; }
+        .unit { font-size: 1.1rem; color: #94a3b8; }
+        
+        /* プログレスバー */
+        .progress-bg { background: #334155; border-radius: 10px; height: 12px; overflow: hidden; margin: 10px 0 6px; }
+        .progress-bar { background: linear-gradient(90deg, #38bdf8, #4ade80); height: 100%; width: 0%; transition: width 0.3s; }
+        
+        .info { display: flex; justify-content: space-between; color: #94a3b8; font-size: 0.85rem; margin-top: 8px; }
+        
         /* OLED画面シミュレータ */
-        .oled-container { background: #000; border: 3px solid #334155; border-radius: 10px; padding: 10px; display: flex; justify-content: center; box-shadow: inset 0 0 10px rgba(56,189,248,0.2); margin-top: 15px; }
+        .oled-container { background: #000; border: 2px solid #334155; border-radius: 10px; padding: 6px; display: flex; justify-content: center; box-shadow: inset 0 0 10px rgba(56,189,248,0.2); margin-top: 12px; }
         canvas { background: #000; width: 100%; height: auto; aspect-ratio: 2 / 1; }
         
-        /* コース進捗カード */
-        .course-info { margin-top: 20px; text-align: left; background: #0f172a; padding: 15px; border-radius: 10px; border: 1px solid #334155; }
-        .course-title { font-size: 0.85rem; color: #38bdf8; font-weight: bold; margin-bottom: 5px; }
-        .location-name { font-size: 1.2rem; font-weight: bold; color: #4ade80; margin: 5px 0; }
-        .distance-text { font-size: 0.9rem; color: #94a3b8; }
+        /* コース進捗エリア */
+        .course-info { margin-top: 12px; text-align: left; background: #0f172a; padding: 12px; border-radius: 10px; border: 1px solid #334155; }
+        .course-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+        .course-title { font-size: 0.85rem; color: #38bdf8; font-weight: bold; }
+        
+        select { background: #1e293b; color: #f8fafc; border: 1px solid #38bdf8; border-radius: 6px; padding: 4px 8px; font-size: 0.8rem; }
+
+        .location-name { font-size: 1.1rem; font-weight: bold; color: #4ade80; margin: 4px 0; }
+        .distance-text { font-size: 0.85rem; color: #94a3b8; }
+
+        /* 設定エリア */
+        .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; font-size: 0.8rem; color: #94a3b8; }
+        .setting-box { background: #0f172a; padding: 8px; border-radius: 8px; border: 1px solid #334155; }
+        .setting-box input { width: 45px; background: #1e293b; border: 1px solid #38bdf8; color: #fff; border-radius: 4px; text-align: center; font-size: 0.85rem; padding: 2px; }
+
+        /* 履歴・累計エリア */
+        .stats-section { margin-top: 12px; background: #0f172a; padding: 12px; border-radius: 10px; border: 1px solid #334155; }
+        .stats-title { font-size: 0.85rem; color: #38bdf8; font-weight: bold; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+        .monthly-box { display: flex; justify-content: space-around; background: #1e293b; padding: 10px; border-radius: 8px; text-align: center; margin-bottom: 10px; }
+        .monthly-val { font-size: 1.2rem; font-weight: bold; color: #4ade80; }
+        
+        .history-list { list-style: none; padding: 0; margin: 0; font-size: 0.8rem; }
+        .history-item { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #1e293b; color: #cbd5e1; }
+        .history-item:last-child { border-bottom: none; }
+        .reset-btn { background: transparent; color: #64748b; border: 1px solid #334155; padding: 4px 8px; font-size: 0.7rem; border-radius: 4px; width: auto; margin: 0; }
     </style>
 </head>
 <body>
 
     <h1>🏃 Pico 2 W 万歩計ダッシュボード</h1>
     
-    <button id="connectBtn" onclick="connectBLE()">Pico 2 W に接続</button>
-    <button id="syncBtn" class="sync-btn" onclick="syncTime()" disabled>📲 スマホの現在時刻をPicoに同期</button>
+    <div class="btn-group">
+        <button id="connectBtn" onclick="connectBLE()">🔗 Pico 2 W 接続</button>
+        <button id="syncBtn" class="sync-btn" onclick="syncTime()" disabled>📲 時刻同期</button>
+    </div>
 
     <div class="card">
-        <h1>🚶 Web Bluetooth 歩数メーター</h1>
+        <div style="font-size: 0.85rem; color: #94a3b8;">Web Bluetooth 歩数メーター</div>
         <div><span class="steps" id="steps">0</span> <span class="unit">歩</span></div>
         
         <div class="progress-bg"><div class="progress-bar" id="stepBar"></div></div>
         <div class="info"><span>目標: 10,000歩</span><span id="rate">0%</span></div>
+
+        <div class="settings-grid">
+            <div class="setting-box">
+                🔥 カロリー<br>
+                <span id="calorieText" style="font-size: 1rem; color: #f43f5e; font-weight: bold;">0</span> kcal
+                <span style="font-size: 0.7rem; color: #64748b;" id="onigiriText">(🍙 0個)</span>
+            </div>
+            <div class="setting-box">
+                ⚙️ 歩幅設定<br>
+                <input type="number" id="strideInput" value="70" min="30" max="120" onchange="updateCourseInfo(state.steps)"> cm
+            </div>
+        </div>
         
-        <hr style="border: 0.5px solid #334155; margin: 20px 0;">
+        <hr style="border: 0.5px solid #334155; margin: 12px 0;">
         
         <div class="info"><span id="date">----/--/--</span><span id="time">--:--:--</span></div>
 
-        <!-- クッキリ表示される高解像度OLEDキャンバス -->
         <div class="oled-container">
             <canvas id="oled" width="512" height="256"></canvas>
         </div>
 
-        <!-- マラソン・駅伝ナビゲーションエリア -->
         <div class="course-info">
-            <div class="course-title">🎽 走破状況ナビ（歩幅70cm換算）</div>
+            <div class="course-header">
+                <div class="course-title">🎽 走破モード</div>
+                <select id="courseSelect" onchange="updateCourseInfo(state.steps)">
+                    <option value="marathon">フルマラソン (42.195km)</option>
+                    <option value="ekiden">箱根駅伝 往復 (217.1km)</option>
+                </select>
+            </div>
             <div class="location-name" id="locName">スタート前</div>
-            <div class="distance-text" id="distText">累計: 0 m / 42,195 m</div>
+            <div class="distance-text" id="distText">累計: 0 m</div>
             
             <div class="progress-bg"><div class="progress-bar" id="courseBar"></div></div>
-            <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: #64748b;">
-                <span>フルマラソン完走まで</span>
+            <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: #64748b;">
+                <span id="goalLabel">完走まで</span>
                 <span id="percent">0%</span>
             </div>
+        </div>
+
+        <!-- 📊 日々の記録・今月の累計エリア -->
+        <div class="stats-section">
+            <div class="stats-title">
+                <span>📅 記録ログ</span>
+                <button class="reset-btn" onclick="resetHistory()">履歴クリア</button>
+            </div>
+            
+            <!-- 今月の累計データ -->
+            <div class="monthly-box">
+                <div>
+                    <div style="font-size: 0.75rem; color: #94a3b8;">今月の累計歩数</div>
+                    <div class="monthly-val" id="monthlySteps">0 歩</div>
+                </div>
+                <div style="border-left: 1px solid #334155;"></div>
+                <div>
+                    <div style="font-size: 0.75rem; color: #94a3b8;">今月の総距離</div>
+                    <div class="monthly-val" id="monthlyDist">0.0 km</div>
+                </div>
+            </div>
+
+            <!-- 直近7日間の履歴 -->
+            <div style="font-size: 0.8rem; color: #38bdf8; margin-bottom: 4px; font-weight: bold;">直近7日間の記録</div>
+            <ul class="history-list" id="historyList">
+                <li class="history-item" style="color: #64748b;">まだ記録がありません</li>
+            </ul>
         </div>
     </div>
 
     <script>
         const UART_SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
-        const UART_TX_UUID      = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"; // 受信（Pico -> スマホ）
-        const UART_RX_UUID      = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"; // 送信（スマホ -> Pico）
+        const UART_TX_UUID      = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
+        const UART_RX_UUID      = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
         
         const TARGET_STEPS = 10000;
         
         let bleDevice = null;
         let rxCharacteristic = null;
 
-        // 高解像度キャンバス（倍率4倍：512x256）
         const canvas = document.getElementById('oled');
         const ctx = canvas.getContext('2d');
         const SCALE = 4;
@@ -120,19 +200,36 @@
         
         let state = { date: "----/--/--", time: "--:--:--", steps: 0, charX: 0, animeTick: 0 };
 
-        // 走破ポイントの定義（歩幅70cm＝0.7m計算）
-        const STAGES = [
-            { dist: 0,     name: "🏁 スタート（東京都庁）" },
-            { dist: 5000,  name: "⛩ 飯田橋・市ヶ谷付近 (5km)" },
-            { dist: 7000,  name: "🎯 10,000歩達成！(7km地点)" },
-            { dist: 10000, name: "🗼 日本橋付近 (10km)" },
-            { dist: 15000, name: "🗼 東京タワー前 (15km)" },
-            { dist: 21097, name: "🏃 ハーフマラソン通過 (21.1km)" },
-            { dist: 30000, name: "🔥 30kmの壁到達！ (30km)" },
-            { dist: 42195, name: "🏆 フルマラソンゴール！（東京駅）" }
-        ];
+        const MARATHON_STAGES = {
+            total: 42195,
+            stages: [
+                { dist: 0,     name: "🏁 スタート（東京都庁）" },
+                { dist: 5000,  name: "⛩ 飯田橋・市ヶ谷付近 (5km)" },
+                { dist: 10000, name: "🗼 日本橋付近 (10km)" },
+                { dist: 15000, name: "🗼 東京タワー前 (15km)" },
+                { dist: 21097, name: "🏃 ハーフマラソン通過 (21.1km)" },
+                { dist: 30000, name: "🔥 30kmの壁到達！ (30km)" },
+                { dist: 42195, name: "🏆 フルマラソンゴール！（東京駅）" }
+            ]
+        };
 
-        // 高解像度でのドット絵描画
+        const EKIDEN_STAGES = {
+            total: 217100,
+            stages: [
+                { dist: 0,      name: "🎽 1区: スタート（大手町）" },
+                { dist: 21300,  name: "🎽 2区: 鶴見中継所 (21.3km)" },
+                { dist: 44400,  name: "🎽 3区: 戸塚中継所 (44.4km)" },
+                { dist: 65800,  name: "🎽 4区: 平塚中継所 (65.8km)" },
+                { dist: 86700,  name: "🎽 5区: 小田原中継所 (86.7km)" },
+                { dist: 107500, name: "🏔 往路ゴール / 芦ノ湖 (107.5km)" },
+                { dist: 128300, name: "🎽 7区: 小田原中継所 (128.3km)" },
+                { dist: 150000, name: "🎽 8区: 平塚中継所 (150.0km)" },
+                { dist: 171400, name: "🎽 9区: 戸塚中継所 (171.4km)" },
+                { dist: 195800, name: "🎽 10区: 鶴見中継所 (195.8km)" },
+                { dist: 217100, name: "🏆 復路総合ゴール！（大手町）" }
+            ]
+        };
+
         function drawDotCharacter(ox, oy, pattern) {
             for (let row = 0; row < 8; row++) {
                 for (let col = 0; col < 8; col++) {
@@ -143,7 +240,6 @@
             }
         }
 
-        // 高画質OLED再描画
         function drawOLED() {
             ctx.fillStyle = "#000";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -164,82 +260,141 @@
             drawDotCharacter(state.charX, 48, pat);
         }
 
-        // コース状況の更新
         function updateCourseInfo(steps) {
-            const meters = Math.round(steps * 0.7);
-            let currentLoc = STAGES[0].name;
-            for (let i = 0; i < STAGES.length; i++) {
-                if (meters >= STAGES[i].dist) {
-                    currentLoc = STAGES[i].name;
+            const strideCm = parseFloat(document.getElementById('strideInput').value) || 70;
+            const meters = Math.round(steps * (strideCm / 100));
+            
+            const kcal = (steps * 0.04).toFixed(1);
+            const onigiri = (kcal / 180).toFixed(1);
+            document.getElementById('calorieText').innerText = kcal;
+            document.getElementById('onigiriText').innerText = `(🍙 ${onigiri}個)`;
+
+            const mode = document.getElementById('courseSelect').value;
+            const courseData = (mode === 'ekiden') ? EKIDEN_STAGES : MARATHON_STAGES;
+
+            let currentLoc = courseData.stages[0].name;
+            for (let i = 0; i < courseData.stages.length; i++) {
+                if (meters >= courseData.stages[i].dist) {
+                    currentLoc = courseData.stages[i].name;
                 }
             }
+
             document.getElementById('locName').innerText = currentLoc;
-            document.getElementById('distText').innerText = `累計: ${meters.toLocaleString()} m / 42,195 m`;
+            document.getElementById('distText').innerText = `累計: ${meters.toLocaleString()} m / ${courseData.total.toLocaleString()} m`;
             
-            const rate = Math.min(100, ((meters / 42195) * 100).toFixed(1));
+            const rate = Math.min(100, ((meters / courseData.total) * 100).toFixed(1));
             document.getElementById('courseBar').style.width = rate + '%';
             document.getElementById('percent').innerText = rate + '%';
         }
 
-        // BLE接続処理
+        // --- 📊 履歴・ローカルストレージ関連処理 ---
+        function saveDailyData(dateStr, steps) {
+            if (!dateStr || dateStr.includes("-")) return;
+            let history = JSON.parse(localStorage.getItem('pedometer_history') || '{}');
+            history[dateStr] = steps;
+            localStorage.setItem('pedometer_history', JSON.stringify(history));
+            renderStats();
+        }
+
+        function renderStats() {
+            let history = JSON.parse(localStorage.getItem('pedometer_history') || '{}');
+            const dates = Object.keys(history).sort().reverse();
+            
+            const listEl = document.getElementById('historyList');
+            listEl.innerHTML = '';
+
+            if (dates.length === 0) {
+                listEl.innerHTML = '<li class="history-item" style="color: #64748b;">まだ記録がありません</li>';
+                document.getElementById('monthlySteps').innerText = '0 歩';
+                document.getElementById('monthlyDist').innerText = '0.0 km';
+                return;
+            }
+
+            // 直近7日分の表示
+            const recentDates = dates.slice(0, 7);
+            const strideCm = parseFloat(document.getElementById('strideInput').value) || 70;
+
+            recentDates.forEach(d => {
+                const stepVal = history[d];
+                const distKm = ((stepVal * (strideCm / 100)) / 1000).toFixed(1);
+                const li = document.createElement('li');
+                li.className = 'history-item';
+                li.innerHTML = `<span>${d}</span><span><b>${stepVal.toLocaleString()}</b> 歩 (${distKm} km)</span>`;
+                listEl.appendChild(li);
+            });
+
+            // 今月の累計計算
+            const now = new Date();
+            const currentMonthPrefix = `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}`;
+            let monthTotalSteps = 0;
+
+            dates.forEach(d => {
+                if (d.startsWith(currentMonthPrefix)) {
+                    monthTotalSteps += history[d];
+                }
+            });
+
+            const monthTotalKm = ((monthTotalSteps * (strideCm / 100)) / 1000).toFixed(1);
+            document.getElementById('monthlySteps').innerText = `${monthTotalSteps.toLocaleString()} 歩`;
+            document.getElementById('monthlyDist').innerText = `${monthTotalKm} km`;
+        }
+
+        function resetHistory() {
+            if (confirm("過去の歩数履歴をすべて消去しますか？")) {
+                localStorage.removeItem('pedometer_history');
+                renderStats();
+            }
+        }
+
+        // --- BLE通信処理 ---
         async function connectBLE() {
             try {
                 bleDevice = await navigator.bluetooth.requestDevice({
-                    filters: [{ name: 'Pico2W-Step' }], // ※ラズパイ側の名前がPico2W-V2の場合はここを合わせてください
+                    filters: [{ name: 'Pico2W-Step' }],
                     optionalServices: [UART_SERVICE_UUID]
                 });
+
+                bleDevice.addEventListener('gattserverdisconnected', onDisconnected);
 
                 const server = await bleDevice.gatt.connect();
                 const service = await server.getPrimaryService(UART_SERVICE_UUID);
                 
-                // データ受信用 (TX)
                 const txCharacteristic = await service.getCharacteristic(UART_TX_UUID);
                 await txCharacteristic.startNotifications();
                 txCharacteristic.addEventListener('characteristicvaluechanged', handleData);
 
-                // データ送信用 (RX) の保持
                 rxCharacteristic = await service.getCharacteristic(UART_RX_UUID);
 
-                document.getElementById('connectBtn').innerText = "接続完了 (通信中)";
+                document.getElementById('connectBtn').innerText = "✅ 接続中";
                 document.getElementById('connectBtn').disabled = true;
-                document.getElementById('syncBtn').disabled = false; // 同期ボタンを有効化
+                document.getElementById('syncBtn').disabled = false;
 
-                // 接続時に自動で時刻を同期する
                 syncTime();
-
                 drawOLED();
             } catch (error) {
                 alert("接続エラー: " + error);
             }
         }
 
-        // スマホの現在時刻をPicoへ送信する関数（★ラズパイ側に合わせた T:YYYYMMDDHHMMSS 形式）
+        function onDisconnected() {
+            alert("Pico 2 W との接続が切れました。");
+            document.getElementById('connectBtn').innerText = "🔗 再接続";
+            document.getElementById('connectBtn').disabled = false;
+            document.getElementById('syncBtn').disabled = true;
+            rxCharacteristic = null;
+        }
+
         async function syncTime() {
-            if (!rxCharacteristic) {
-                alert("Picoと接続されていません。");
-                return;
-            }
+            if (!rxCharacteristic) return;
             try {
                 const now = new Date();
-                const y = now.getFullYear();
-                const m = String(now.getMonth() + 1).padStart(2, '0');
-                const d = String(now.getDate()).padStart(2, '0');
-                const hh = String(now.getHours()).padStart(2, '0');
-                const mm = String(now.getMinutes()).padStart(2, '0');
-                const ss = String(now.getSeconds()).padStart(2, '0');
-
-                // "T:YYYYMMDDHHMMSS" 形式（BLEのデータ制限をクリアする短縮版）
-                const timeString = `T:${y}${m}${d}${hh}${mm}${ss}\n`;
-                const encoder = new TextEncoder();
-                await rxCharacteristic.writeValue(encoder.encode(timeString));
-                
-                console.log("時刻をPicoに送信しました:", timeString);
+                const timeString = `TIME:${now.getFullYear()},${now.getMonth()+1},${now.getDate()},${now.getHours()},${now.getMinutes()},${now.getSeconds()}\n`;
+                await rxCharacteristic.writeValue(new TextEncoder().encode(timeString));
             } catch (error) {
                 console.error("時刻同期失敗:", error);
             }
         }
 
-        // Picoからのデータ受信処理
         function handleData(event) {
             const value = new TextDecoder().decode(event.target.value).trim();
             
@@ -250,7 +405,6 @@
                     state.time = parts[1];
                     state.steps = parseInt(parts[2]);
                     
-                    // UI反映
                     document.getElementById('steps').innerText = state.steps.toLocaleString();
                     document.getElementById('date').innerText = state.date;
                     document.getElementById('time').innerText = state.time;
@@ -260,6 +414,9 @@
                     document.getElementById('rate').innerText = rate + '%';
                     
                     updateCourseInfo(state.steps);
+                    
+                    // 日付ごとの記録を自動保存・更新
+                    saveDailyData(state.date, state.steps);
                 }
             } else if (value.startsWith("STEPS:")) {
                 state.charX = (state.charX + 6) % 128;
@@ -268,9 +425,10 @@
             drawOLED();
         }
 
-        // 初期描画
+        // 初期描画＆保存データ読み込み
         drawOLED();
         updateCourseInfo(0);
+        renderStats();
     </script>
 </body>
 </html>
